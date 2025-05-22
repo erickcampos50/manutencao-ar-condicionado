@@ -17,7 +17,7 @@ interface EquipamentoHistoricoProps {
 }
 
 export function EquipamentoHistorico({ patrimonio, intervencoes }: EquipamentoHistoricoProps) {
-  if (!patrimonio || intervencoes.length === 0) {
+  if (!patrimonio) {
     return null
   }
 
@@ -60,7 +60,7 @@ export function EquipamentoHistorico({ patrimonio, intervencoes }: EquipamentoHi
                   </div>
                 </div>
                 <p className="text-sm">{intervencao.descricao}</p>
-                <p className="text-xs text-muted-foreground mt-1">Responsável: {intervencao.responsavel}</p>
+                <p className="text-xs text-muted-foreground mt-1">Responsável: {intervencao.responsavel || "-"}</p>
               </div>
             ))}
           </div>

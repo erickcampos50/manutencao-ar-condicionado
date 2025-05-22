@@ -14,104 +14,14 @@ import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut"
 import { tiposIntervencao } from "@/app/intervencoes/page"
 import { EquipamentoDetalhes } from "@/components/equipamento-detalhes"
 import { EquipamentoHistorico } from "@/components/equipamento-historico"
-
-// Locais para seleção
-const locais = [
-  { label: "Sala 101", value: "sala-101" },
-  { label: "Sala 102", value: "sala-102" },
-  { label: "Recepção", value: "recepcao" },
-  { label: "Almoxarifado", value: "almoxarifado" },
-  { label: "Escritório Administrativo", value: "escritorio-admin" },
-]
-
-// Patrimônios de exemplo
-const patrimonios = [
-  { label: "AC12345", value: "AC12345" },
-  { label: "AC67890", value: "AC67890" },
-  { label: "AC54321", value: "AC54321" },
-  { label: "AC98765", value: "AC98765" },
-]
-
-// Dados de exemplo para equipamentos
-const equipamentosData = [
-  {
-    patrimonio: "AC12345",
-    marca: "Samsung",
-    modelo: "AR12TRHQCWK",
-    capacidade: "12000 BTU",
-    localAtual: "Sala 102",
-  },
-  {
-    patrimonio: "AC67890",
-    marca: "LG",
-    modelo: "S4-Q12JA3WF",
-    capacidade: "9000 BTU",
-    localAtual: "Recepção",
-  },
-  {
-    patrimonio: "AC54321",
-    marca: "Electrolux",
-    modelo: "VI12F",
-    capacidade: "12000 BTU",
-    localAtual: "Almoxarifado",
-  },
-  {
-    patrimonio: "AC98765",
-    marca: "Consul",
-    modelo: "CBF12CBBNA",
-    capacidade: "12000 BTU",
-    localAtual: "Escritório Administrativo",
-  },
-]
-
-// Dados de exemplo para histórico de intervenções
-const historicoData = [
-  {
-    id: 1,
-    patrimonio: "AC12345",
-    tipo: "manutencao-preventiva",
-    descricao: "Limpeza de filtros e verificação geral",
-    dataInicio: new Date("2023-05-10"),
-    dataTermino: new Date("2023-05-10"),
-    responsavel: "João Silva",
-  },
-  {
-    id: 2,
-    patrimonio: "AC12345",
-    tipo: "movimentacao",
-    descricao: "Transferência da Sala 101 para Sala 102",
-    dataInicio: new Date("2023-06-15"),
-    dataTermino: null,
-    responsavel: "Maria Oliveira",
-  },
-  {
-    id: 3,
-    patrimonio: "AC67890",
-    tipo: "reclamacao",
-    descricao: "Equipamento com ruído excessivo",
-    dataInicio: new Date("2023-07-20"),
-    dataTermino: null,
-    responsavel: "Carlos Santos",
-  },
-  {
-    id: 4,
-    patrimonio: "AC67890",
-    tipo: "manutencao-corretiva",
-    descricao: "Substituição de ventilador interno",
-    dataInicio: new Date("2023-07-25"),
-    dataTermino: new Date("2023-07-25"),
-    responsavel: "Pedro Técnico",
-  },
-  {
-    id: 5,
-    patrimonio: "AC54321",
-    tipo: "reserva",
-    descricao: "Reserva para instalação em nova sala",
-    dataInicio: new Date("2023-08-01"),
-    dataTermino: new Date("2023-08-15"),
-    responsavel: "Ana Planejamento",
-  },
-]
+import {
+  getLocaisClient,
+  getEquipamentosClient,
+  getEquipamentoByPatrimonioClient,
+  getIntervencoesByPatrimonioClient,
+  addLocalClient,
+} from "@/lib/supabase/client"
+import { adicionarIntervencao } from "@/app/actions"
 
 interface NovaIntervencaoFormProps {
   onSubmit: (data: any) => void
@@ -120,6 +30,10 @@ interface NovaIntervencaoFormProps {
 
 export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormProps) {
   const { toast } = useToast()
+  const [isLoading, setIsLoading] = useState(false)
+  const [locais, setLocais] = useState<{ label: string; value: string }[]>([])
+  const [patrimonios, setPatrimonios] = useState<{ label: string; value: string }[]>([])
+
   const [formData, setFormData] = useState({
     patrimonio: "",
     tipo: "",
@@ -135,20 +49,90 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
   const [equipamentoSelecionado, setEquipamentoSelecionado] = useState<any>(null)
   const [historicoEquipamento, setHistoricoEquipamento] = useState<any[]>([])
 
+  // Carregar dados iniciais
+  useEffect(() => {
+    async function carregarDados() {
+      try {
+        // Carregar locais
+        const locaisData = await getLocaisClient()
+        setLocais(
+          locaisData.map((local) => ({
+            label: local.nome,
+            value: local.nome,
+          })),
+        )
+
+        // Carregar patrimônios
+        const equipamentosData = await getEquipamentosClient()
+        setPatrimonios(
+          equipamentosData.map((equip) => ({
+            label: equip.patrimonio,
+            value: equip.patrimonio,
+          })),
+        )
+      } catch (error) {
+        console.error("Erro ao carregar dados iniciais:", error)
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar os dados iniciais.",
+          variant: "destructive",
+        })
+      }
+    }
+
+    carregarDados()
+  }, [toast])
+
   // Efeito para buscar detalhes do equipamento quando o patrimônio muda
   useEffect(() => {
-    if (formData.patrimonio) {
-      const equipamento = equipamentosData.find((e) => e.patrimonio === formData.patrimonio)
-      setEquipamentoSelecionado(equipamento || null)
+    async function buscarDetalhesEquipamento() {
+      if (!formData.patrimonio) {
+        setEquipamentoSelecionado(null)
+        setHistoricoEquipamento([])
+        return
+      }
 
-      // Buscar histórico do equipamento
-      const historico = historicoData.filter((h) => h.patrimonio === formData.patrimonio)
-      setHistoricoEquipamento(historico)
-    } else {
-      setEquipamentoSelecionado(null)
-      setHistoricoEquipamento([])
+      try {
+        // Buscar equipamento
+        const equipamento = await getEquipamentoByPatrimonioClient(formData.patrimonio)
+
+        if (equipamento) {
+          setEquipamentoSelecionado({
+            patrimonio: equipamento.patrimonio,
+            marca: equipamento.marca || "",
+            modelo: equipamento.modelo || "",
+            capacidade: equipamento.capacidade ? `${equipamento.capacidade} BTU` : "",
+            localAtual: equipamento.local_inicial,
+          })
+
+          // Buscar histórico do equipamento
+          const historico = await getIntervencoesByPatrimonioClient(formData.patrimonio)
+          setHistoricoEquipamento(
+            historico.map((item) => ({
+              id: item.id,
+              tipo: item.tipo,
+              descricao: item.descricao || "",
+              dataInicio: new Date(item.data_inicio),
+              dataTermino: item.data_termino ? new Date(item.data_termino) : null,
+              responsavel: item.responsavel || "",
+            })),
+          )
+        } else {
+          setEquipamentoSelecionado(null)
+          setHistoricoEquipamento([])
+        }
+      } catch (error) {
+        console.error("Erro ao buscar detalhes do equipamento:", error)
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar os detalhes do equipamento.",
+          variant: "destructive",
+        })
+      }
     }
-  }, [formData.patrimonio])
+
+    buscarDetalhesEquipamento()
+  }, [formData.patrimonio, toast])
 
   // Efeito para ajustar campos visíveis com base no tipo de intervenção
   useEffect(() => {
@@ -165,16 +149,36 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleComboboxChange = (name: string, value: string) => {
+  const handleComboboxChange = async (name: string, value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }))
+
+    // Se for um novo local, adicionar ao banco de dados
+    if (name === "localDestino" && value && !locais.some((local) => local.value === value)) {
+      try {
+        const novoLocal = await addLocalClient(value)
+        setLocais((prev) => [...prev, { label: novoLocal.nome, value: novoLocal.nome }])
+        toast({
+          title: "Local adicionado",
+          description: `O local "${value}" foi adicionado com sucesso.`,
+        })
+      } catch (error) {
+        console.error("Erro ao adicionar novo local:", error)
+        toast({
+          title: "Erro",
+          description: "Não foi possível adicionar o novo local.",
+          variant: "destructive",
+        })
+      }
+    }
   }
 
   const handleDateChange = (name: string, date: Date | undefined) => {
     setFormData((prev) => ({ ...prev, [name]: date }))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setIsLoading(true)
 
     // Validação básica
     if (!formData.patrimonio) {
@@ -183,6 +187,7 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
         description: "Número de patrimônio é obrigatório.",
         variant: "destructive",
       })
+      setIsLoading(false)
       return
     }
 
@@ -192,6 +197,7 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
         description: "Tipo de intervenção é obrigatório.",
         variant: "destructive",
       })
+      setIsLoading(false)
       return
     }
 
@@ -202,6 +208,7 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
         description: "Data de término é obrigatória para reservas.",
         variant: "destructive",
       })
+      setIsLoading(false)
       return
     }
 
@@ -211,21 +218,62 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
         description: "Local de destino é obrigatório para movimentações.",
         variant: "destructive",
       })
+      setIsLoading(false)
       return
     }
 
-    // Converter custo para número
-    const custoNumerico = formData.custo ? Number.parseFloat(formData.custo) : 0
+    try {
+      // Criar FormData para enviar ao servidor
+      const formDataObj = new FormData()
+      formDataObj.append("patrimonio", formData.patrimonio)
+      formDataObj.append("tipo", formData.tipo)
+      formDataObj.append("descricao", formData.descricao)
+      formDataObj.append("dataInicio", formData.dataInicio.toISOString())
 
-    // Adicionar local de origem do equipamento selecionado
-    const dadosCompletos = {
-      ...formData,
-      localOrigem: equipamentoSelecionado?.localAtual || "",
-      custo: custoNumerico,
+      if (formData.dataTermino) {
+        formDataObj.append("dataTermino", formData.dataTermino.toISOString())
+      }
+
+      if (equipamentoSelecionado?.localAtual) {
+        formDataObj.append("localOrigem", equipamentoSelecionado.localAtual)
+      }
+
+      if (formData.localDestino) {
+        formDataObj.append("localDestino", formData.localDestino)
+      }
+
+      formDataObj.append("custo", formData.custo || "0")
+      formDataObj.append("responsavel", formData.responsavel)
+      formDataObj.append("observacoes", formData.observacoes)
+
+      // Enviar para o servidor
+      const resultado = await adicionarIntervencao(formDataObj)
+
+      if (resultado.success) {
+        toast({
+          title: "Registro salvo",
+          description: resultado.message,
+        })
+
+        // Chamar a função onSubmit passada como prop
+        onSubmit(resultado.data)
+      } else {
+        toast({
+          title: "Erro ao salvar",
+          description: resultado.message,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Erro ao salvar intervenção:", error)
+      toast({
+        title: "Erro ao salvar",
+        description: "Ocorreu um erro ao salvar a intervenção.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
     }
-
-    // Enviar dados
-    onSubmit(dadosCompletos)
   }
 
   // Atalhos de teclado
@@ -266,7 +314,7 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
           value={formData.patrimonio}
           onChange={(value) => handleComboboxChange("patrimonio", value)}
           placeholder="Selecione o patrimônio"
-          allowCustomValue={true}
+          allowCustomValue={false}
         />
       </div>
 
@@ -383,10 +431,12 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
 
       {/* Botões de ação */}
       <div className="flex justify-end gap-4 mt-6">
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
           Cancelar (F4)
         </Button>
-        <Button type="submit">Salvar (F9)</Button>
+        <Button type="submit" disabled={isLoading}>
+          {isLoading ? "Salvando..." : "Salvar (F9)"}
+        </Button>
       </div>
 
       {/* Histórico do Equipamento */}

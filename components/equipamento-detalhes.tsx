@@ -26,19 +26,19 @@ export function EquipamentoDetalhes({ equipamento }: EquipamentoDetalhesProps) {
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Marca</p>
-            <p className="font-medium">{equipamento.marca}</p>
+            <p className="font-medium">{equipamento.marca || "-"}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Modelo</p>
-            <p className="font-medium">{equipamento.modelo}</p>
+            <p className="font-medium">{equipamento.modelo || "-"}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Capacidade</p>
-            <p className="font-medium">{equipamento.capacidade}</p>
+            <p className="font-medium">{equipamento.capacidade || "-"}</p>
           </div>
           <div className="col-span-2 md:col-span-4">
             <p className="text-xs text-muted-foreground">Local Atual</p>
-            <p className="font-medium">{equipamento.localAtual}</p>
+            <p className="font-medium">{equipamento.localAtual || "-"}</p>
           </div>
         </div>
       </CardContent>

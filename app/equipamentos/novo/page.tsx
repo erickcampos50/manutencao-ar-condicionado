@@ -13,6 +13,8 @@ import { useToast } from "@/hooks/use-toast"
 import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut"
 import { DatePicker } from "@/components/date-picker"
 import { Textarea } from "@/components/ui/textarea"
+import { adicionarEquipamento } from "@/app/actions"
+import { getLocaisClient, addLocalClient } from "@/lib/supabase/client"
 
 // Tipos de equipamento
 const tiposEquipamento = [
@@ -38,19 +40,12 @@ const cores = [
   { label: "Bege", value: "bege" },
 ]
 
-// Locais fictícios para demonstração
-const locais = [
-  { label: "Sala 101", value: "sala-101" },
-  { label: "Sala 102", value: "sala-102" },
-  { label: "Recepção", value: "recepcao" },
-  { label: "Almoxarifado", value: "almoxarifado" },
-  { label: "Escritório Administrativo", value: "escritorio-admin" },
-]
-
 export default function NovoEquipamento() {
   const router = useRouter()
   const { toast } = useToast()
   const patrimonioRef = useRef<HTMLInputElement>(null)
+  const [locais, setLocais] = useState<{ label: string; value: string }[]>([])
+  const [isLoading, setIsLoading] = useState(false)
 
   const [formData, setFormData] = useState({
     patrimonio: "",
@@ -68,6 +63,30 @@ export default function NovoEquipamento() {
     observacoes: "",
   })
 
+  // Carregar locais do Supabase
+  useEffect(() => {
+    async function carregarLocais() {
+      try {
+        const locaisData = await getLocaisClient()
+        setLocais(
+          locaisData.map((local) => ({
+            label: local.nome,
+            value: local.nome,
+          })),
+        )
+      } catch (error) {
+        console.error("Erro ao carregar locais:", error)
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar a lista de locais.",
+          variant: "destructive",
+        })
+      }
+    }
+
+    carregarLocais()
+  }, [toast])
+
   // Foco inicial no primeiro campo
   useEffect(() => {
     if (patrimonioRef.current) {
@@ -80,13 +99,32 @@ export default function NovoEquipamento() {
     return /^[A-Za-z0-9]{3,20}$/.test(valor)
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleComboboxChange = (name: string, value: string) => {
+  const handleComboboxChange = async (name: string, value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }))
+
+    // Se for um novo local, adicionar ao banco de dados
+    if (name === "localInicial" && value && !locais.some((local) => local.value === value)) {
+      try {
+        const novoLocal = await addLocalClient(value)
+        setLocais((prev) => [...prev, { label: novoLocal.nome, value: novoLocal.nome }])
+        toast({
+          title: "Local adicionado",
+          description: `O local "${value}" foi adicionado com sucesso.`,
+        })
+      } catch (error) {
+        console.error("Erro ao adicionar novo local:", error)
+        toast({
+          title: "Erro",
+          description: "Não foi possível adicionar o novo local.",
+          variant: "destructive",
+        })
+      }
+    }
   }
 
   const handleDateChange = (date: Date | undefined) => {
@@ -97,6 +135,7 @@ export default function NovoEquipamento() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setIsLoading(true)
 
     // Validação básica
     if (!formData.patrimonio || !validarPatrimonio(formData.patrimonio)) {
@@ -105,6 +144,7 @@ export default function NovoEquipamento() {
         description: "Número de patrimônio inválido. Use de 3 a 20 caracteres alfanuméricos.",
         variant: "destructive",
       })
+      setIsLoading(false)
       return
     }
 
@@ -114,47 +154,73 @@ export default function NovoEquipamento() {
         description: "Local inicial é obrigatório.",
         variant: "destructive",
       })
+      setIsLoading(false)
       return
     }
 
-    // Simulação de salvamento (em produção, isso seria uma chamada API ou IndexedDB)
     try {
-      // Aqui seria a lógica para salvar no banco de dados
-      console.log("Salvando equipamento:", formData)
+      // Criar FormData para enviar ao servidor
+      const formDataObj = new FormData()
+      formDataObj.append("patrimonio", formData.patrimonio)
+      formDataObj.append("marca", formData.marca)
+      formDataObj.append("modelo", formData.modelo)
+      formDataObj.append("numeroSerie", formData.numeroSerie)
+      formDataObj.append("localInicial", formData.localInicial)
+      formDataObj.append("peso", formData.peso)
+      formDataObj.append("cor", formData.cor)
+      formDataObj.append("potencia", formData.potencia)
+      formDataObj.append("capacidade", formData.capacidade)
+      formDataObj.append("voltagem", formData.voltagem)
+      formDataObj.append("tipo", formData.tipo)
+      formDataObj.append("observacoes", formData.observacoes)
+      formDataObj.append("dataEntrada", formData.dataEntrada.toISOString())
 
-      // Exibir toast de sucesso
-      toast({
-        title: "Registro salvo",
-        description: `Equipamento ${formData.patrimonio} cadastrado com sucesso.`,
-      })
+      // Enviar para o servidor
+      const resultado = await adicionarEquipamento(formDataObj)
 
-      // Limpar formulário
-      setFormData({
-        patrimonio: "",
-        marca: "",
-        modelo: "",
-        numeroSerie: "",
-        localInicial: "",
-        peso: "",
-        cor: "",
-        potencia: "",
-        capacidade: "",
-        voltagem: "",
-        tipo: "",
-        dataEntrada: new Date(),
-        observacoes: "",
-      })
+      if (resultado.success) {
+        toast({
+          title: "Registro salvo",
+          description: resultado.message,
+        })
 
-      // Retornar foco ao primeiro campo
-      if (patrimonioRef.current) {
-        patrimonioRef.current.focus()
+        // Limpar formulário
+        setFormData({
+          patrimonio: "",
+          marca: "",
+          modelo: "",
+          numeroSerie: "",
+          localInicial: "",
+          peso: "",
+          cor: "",
+          potencia: "",
+          capacidade: "",
+          voltagem: "",
+          tipo: "",
+          dataEntrada: new Date(),
+          observacoes: "",
+        })
+
+        // Retornar foco ao primeiro campo
+        if (patrimonioRef.current) {
+          patrimonioRef.current.focus()
+        }
+      } else {
+        toast({
+          title: "Erro ao salvar",
+          description: resultado.message,
+          variant: "destructive",
+        })
       }
     } catch (error) {
+      console.error("Erro ao salvar equipamento:", error)
       toast({
         title: "Erro ao salvar",
         description: "Ocorreu um erro ao salvar o equipamento.",
         variant: "destructive",
       })
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -391,10 +457,12 @@ export default function NovoEquipamento() {
 
             {/* Botões de ação */}
             <div className="col-span-12 flex justify-end gap-4 mt-6">
-              <Button type="button" variant="outline" onClick={handleClear}>
+              <Button type="button" variant="outline" onClick={handleClear} disabled={isLoading}>
                 Cancelar (F4)
               </Button>
-              <Button type="submit">Salvar (F9)</Button>
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? "Salvando..." : "Salvar (F9)"}
+              </Button>
             </div>
           </form>
         </CardContent>
