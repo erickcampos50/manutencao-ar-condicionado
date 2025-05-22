@@ -30,14 +30,17 @@ const tiposIntervencao = [
 export default function Consultas() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(true)
-  const [locais, setLocais] = useState<{ label: string; value: string }[]>([])
+  const [locais, setLocais] = useState<{ id: string; label: string }[]>([])
   const [intervencoes, setIntervencoes] = useState<Intervencao[]>([])
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([])
 
   const [filtros, setFiltros] = useState({
     patrimonio: "",
     tiposIntervencao: [] as string[],
-    local: "",
+    locais: [] as string[], // vários locais
+    marca: "",
+    potencia: "",
+    local: "", // manter para compatibilidade, mas será substituído por locais
     dataInicial: null as Date | null,
     dataFinal: null as Date | null,
   })
@@ -55,8 +58,8 @@ export default function Consultas() {
         const locaisData = await getLocaisClient()
         setLocais(
           locaisData.map((local) => ({
+            id: local.nome,
             label: local.nome,
-            value: local.nome,
           })),
         )
 
@@ -97,6 +100,20 @@ export default function Consultas() {
     setFiltros((prev) => ({ ...prev, [campo]: valor }))
   }
 
+  // Limpar filtros
+  const limparFiltros = () => {
+    setFiltros({
+      patrimonio: "",
+      tiposIntervencao: [],
+      locais: [],
+      marca: "",
+      potencia: "",
+      local: "",
+      dataInicial: null,
+      dataFinal: null,
+    })
+  }
+
   // Aplicar filtros
   const aplicarFiltros = () => {
     let resultados = [...intervencoes]
@@ -111,13 +128,29 @@ export default function Consultas() {
       resultados = resultados.filter((item) => filtros.tiposIntervencao.includes(item.tipo))
     }
 
-    // Filtrar por local (origem ou destino)
-    if (filtros.local) {
+    // Filtrar por vários locais (origem ou destino)
+    if (filtros.locais && filtros.locais.length > 0) {
       resultados = resultados.filter(
         (item) =>
-          (item.local_origem && item.local_origem.includes(filtros.local)) ||
-          (item.local_destino && item.local_destino.includes(filtros.local)),
+          (item.local_origem && filtros.locais.includes(item.local_origem)) ||
+          (item.local_destino && filtros.locais.includes(item.local_destino)),
       )
+    }
+
+    // Filtrar por marca
+    if (filtros.marca) {
+      resultados = resultados.filter((item) => {
+        const eq = equipamentos.find((e) => e.patrimonio === item.patrimonio)
+        return eq && eq.marca && eq.marca.toLowerCase().includes(filtros.marca.toLowerCase())
+      })
+    }
+
+    // Filtrar por potência
+    if (filtros.potencia) {
+      resultados = resultados.filter((item) => {
+        const eq = equipamentos.find((e) => e.patrimonio === item.patrimonio)
+        return eq && eq.potencia && eq.potencia.toString().includes(filtros.potencia)
+      })
     }
 
     // Filtrar por data inicial
@@ -173,13 +206,27 @@ export default function Consultas() {
 
   // Calcular indicadores
   const calcularIndicadores = () => {
-    const totalEquipamentos = equipamentos.length
+    // Filtrar equipamentos conforme filtros aplicados (marca e potência)
+    const equipamentosFiltrados = equipamentos.filter((eq) => {
+      if (filtros.marca && !eq.marca?.toLowerCase().includes(filtros.marca.toLowerCase())) {
+        return false
+      }
+      if (filtros.potencia && !eq.potencia?.toString().includes(filtros.potencia)) {
+        return false
+      }
+      if (filtros.locais && filtros.locais.length > 0 && !filtros.locais.includes(eq.local_inicial)) {
+        return false
+      }
+      return true
+    })
 
-    // Calcular custos totais
-    const custoTotal = intervencoes.reduce((total, item) => total + (item.custo || 0), 0)
+    const totalEquipamentos = equipamentosFiltrados.length
 
-    // Contar manutenções pendentes (sem data de término)
-    const manutencoesPendentes = intervencoes.filter(
+    // Calcular custos totais com intervenções filtradas
+    const custoTotal = resultadosFiltrados.reduce((total, item) => total + (item.custo || 0), 0)
+
+    // Contar manutenções pendentes (sem data de término) nas intervenções filtradas
+    const manutencoesPendentes = resultadosFiltrados.filter(
       (item) => (item.tipo === "manutencao-preventiva" || item.tipo === "manutencao-corretiva") && !item.data_termino,
     ).length
 
@@ -204,16 +251,16 @@ export default function Consultas() {
     // Inicializar custos mensais com zeros
     const custosMensais = meses.map((mes) => ({ mes, valor: 0 }))
 
-    // Calcular custos por mês
-    intervencoes.forEach((item) => {
+    // Calcular custos por mês nas intervenções filtradas
+    resultadosFiltrados.forEach((item) => {
       const data = new Date(item.data_inicio)
       const mes = data.getMonth()
       custosMensais[mes].valor += item.custo || 0
     })
 
-    // Contar tipos de intervenção
+    // Contar tipos de intervenção nas intervenções filtradas
     const tiposCount: Record<string, number> = {}
-    intervencoes.forEach((item) => {
+    resultadosFiltrados.forEach((item) => {
       tiposCount[item.tipo] = (tiposCount[item.tipo] || 0) + 1
     })
 
@@ -222,9 +269,9 @@ export default function Consultas() {
       quantidade,
     }))
 
-    // Calcular custo por tipo
+    // Calcular custo por tipo nas intervenções filtradas
     const custosPorTipo: Record<string, number> = {}
-    intervencoes.forEach((item) => {
+    resultadosFiltrados.forEach((item) => {
       custosPorTipo[item.tipo] = (custosPorTipo[item.tipo] || 0) + (item.custo || 0)
     })
 
@@ -301,33 +348,59 @@ export default function Consultas() {
                 />
               </div>
 
-              {/* Localização */}
+              {/* Vários Locais */}
               <div>
-                <Label htmlFor="local">Localização</Label>
-                <Combobox
+                <Label>Locais</Label>
+                <CheckboxGroup
                   items={locais}
-                  value={filtros.local}
-                  onChange={(value) => handleFiltroChange("local", value)}
-                  placeholder="Selecione o local"
+                  selectedItems={filtros.locais}
+                  onChange={(selected) => handleFiltroChange("locais", selected)}
+                />
+              </div>
+
+              {/* Marca */}
+              <div>
+                <Label htmlFor="marca">Marca</Label>
+                <Input
+                  id="marca"
+                  value={filtros.marca}
+                  onChange={(e) => handleFiltroChange("marca", e.target.value)}
+                  placeholder="Ex: LG, Samsung"
+                />
+              </div>
+
+              {/* Potência */}
+              <div>
+                <Label htmlFor="potencia">Potência</Label>
+                <Input
+                  id="potencia"
+                  value={filtros.potencia}
+                  onChange={(e) => handleFiltroChange("potencia", e.target.value)}
+                  placeholder="Ex: 12000"
                 />
               </div>
 
               {/* Período - Data Inicial */}
               <div>
                 <Label>Data Inicial</Label>
-                <DatePicker date={filtros.dataInicial} onSelect={(date) => handleFiltroChange("dataInicial", date)} />
+                <DatePicker date={filtros.dataInicial ?? undefined} onSelect={(date) => handleFiltroChange("dataInicial", date)} />
               </div>
 
               {/* Período - Data Final */}
               <div>
                 <Label>Data Final</Label>
-                <DatePicker date={filtros.dataFinal} onSelect={(date) => handleFiltroChange("dataFinal", date)} />
+                <DatePicker date={filtros.dataFinal ?? undefined} onSelect={(date) => handleFiltroChange("dataFinal", date)} />
               </div>
 
-              {/* Botão Aplicar */}
-              <Button className="w-full" onClick={aplicarFiltros} disabled={isLoading}>
-                {isLoading ? "Carregando..." : "Aplicar (F9)"}
-              </Button>
+              {/* Botões de ação */}
+              <div className="flex gap-2">
+                <Button className="w-1/2" onClick={aplicarFiltros} disabled={isLoading}>
+                  {isLoading ? "Carregando..." : "Aplicar (F9)"}
+                </Button>
+                <Button className="w-1/2" variant="outline" onClick={limparFiltros} disabled={isLoading}>
+                  Limpar
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -344,10 +417,11 @@ export default function Consultas() {
             </Card>
           ) : (
             <Tabs value={tabAtiva} onValueChange={setTabAtiva}>
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="visao-geral">Visão Geral</TabsTrigger>
                 <TabsTrigger value="historico">Histórico Cronológico</TabsTrigger>
                 <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
+                <TabsTrigger value="equipamentos">Equipamentos</TabsTrigger>
               </TabsList>
 
               {/* Conteúdo da aba Visão Geral */}
@@ -478,6 +552,71 @@ export default function Consultas() {
                           </tbody>
                         </table>
                       </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Conteúdo da aba Equipamentos */}
+              <TabsContent value="equipamentos" className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Equipamentos Registrados</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-border">
+                        <thead>
+                          <tr className="bg-muted/50">
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Patrimônio
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Marca
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Modelo
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Número de Série
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Local Inicial
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Potência
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Capacidade
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Voltagem
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Tipo
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Data Entrada
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-background divide-y divide-border">
+                          {equipamentos.map((eq) => (
+                            <tr key={eq.id}>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.patrimonio}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.marca || "-"}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.modelo || "-"}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.numero_serie || "-"}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.local_inicial}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.potencia || "-"}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.capacidade || "-"}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.voltagem || "-"}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.tipo || "-"}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm">{new Date(eq.data_entrada).toLocaleDateString("pt-BR")}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </CardContent>
                 </Card>

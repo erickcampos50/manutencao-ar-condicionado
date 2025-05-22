@@ -34,6 +34,8 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
   const [locais, setLocais] = useState<{ label: string; value: string }[]>([])
   const [patrimonios, setPatrimonios] = useState<{ label: string; value: string }[]>([])
 
+  const [mostrarTabelaEquipamentos, setMostrarTabelaEquipamentos] = useState(false)
+
   const [formData, setFormData] = useState({
     patrimonio: "",
     tipo: "",
@@ -277,7 +279,10 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
   }
 
   // Atalhos de teclado
-  useKeyboardShortcut("F9", handleSubmit)
+  useKeyboardShortcut("F9", (e) => {
+    e.preventDefault()
+    void handleSubmit(e as unknown as React.FormEvent)
+  })
   useKeyboardShortcut("F4", onCancel)
 
   // Verificar se o campo deve ser visível com base no tipo
@@ -309,6 +314,52 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
         <Label htmlFor="patrimonio" className="mb-1 block">
           Número de Patrimônio *
         </Label>
+        <Button
+          variant="outline"
+          className="mb-2"
+          onClick={() => setMostrarTabelaEquipamentos((prev) => !prev)}
+        >
+          {mostrarTabelaEquipamentos ? "Ocultar tabela de equipamentos" : "Mostrar tabela de equipamentos"}
+        </Button>
+        {mostrarTabelaEquipamentos && (
+          <div className="max-h-48 overflow-y-auto border rounded-md mb-4">
+            <table className="min-w-full divide-y divide-border">
+              <thead>
+                <tr className="bg-muted/50">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Patrimônio
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Marca
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Modelo
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-background divide-y divide-border">
+                {patrimonios.map((equip) => (
+                  <tr
+                    key={equip.value}
+                    className="cursor-pointer hover:bg-muted"
+                    onClick={() => {
+                      handleComboboxChange("patrimonio", equip.value)
+                      setMostrarTabelaEquipamentos(false)
+                    }}
+                  >
+                    <td className="px-4 py-2 whitespace-nowrap text-sm">{equip.label}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm">
+                      {equipamentoSelecionado?.marca || "-"}
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm">
+                      {equipamentoSelecionado?.modelo || "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <Combobox
           items={patrimonios}
           value={formData.patrimonio}
@@ -364,7 +415,7 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
           <Label htmlFor="dataTermino" className="mb-1 block">
             Data Término {isFieldRequired("dataTermino") && "*"}
           </Label>
-          <DatePicker date={formData.dataTermino} onSelect={(date) => handleDateChange("dataTermino", date)} />
+          <DatePicker date={formData.dataTermino ?? undefined} onSelect={(date) => handleDateChange("dataTermino", date)} />
         </div>
 
         {/* Custo */}
