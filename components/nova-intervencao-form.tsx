@@ -12,6 +12,8 @@ import { Combobox } from "@/components/combobox"
 import { useToast } from "@/hooks/use-toast"
 import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut"
 import { tiposIntervencao } from "@/app/intervencoes/page"
+import { EquipamentoDetalhes } from "@/components/equipamento-detalhes"
+import { EquipamentoHistorico } from "@/components/equipamento-historico"
 
 // Locais para seleção
 const locais = [
@@ -30,6 +32,87 @@ const patrimonios = [
   { label: "AC98765", value: "AC98765" },
 ]
 
+// Dados de exemplo para equipamentos
+const equipamentosData = [
+  {
+    patrimonio: "AC12345",
+    marca: "Samsung",
+    modelo: "AR12TRHQCWK",
+    capacidade: "12000 BTU",
+    localAtual: "Sala 102",
+  },
+  {
+    patrimonio: "AC67890",
+    marca: "LG",
+    modelo: "S4-Q12JA3WF",
+    capacidade: "9000 BTU",
+    localAtual: "Recepção",
+  },
+  {
+    patrimonio: "AC54321",
+    marca: "Electrolux",
+    modelo: "VI12F",
+    capacidade: "12000 BTU",
+    localAtual: "Almoxarifado",
+  },
+  {
+    patrimonio: "AC98765",
+    marca: "Consul",
+    modelo: "CBF12CBBNA",
+    capacidade: "12000 BTU",
+    localAtual: "Escritório Administrativo",
+  },
+]
+
+// Dados de exemplo para histórico de intervenções
+const historicoData = [
+  {
+    id: 1,
+    patrimonio: "AC12345",
+    tipo: "manutencao-preventiva",
+    descricao: "Limpeza de filtros e verificação geral",
+    dataInicio: new Date("2023-05-10"),
+    dataTermino: new Date("2023-05-10"),
+    responsavel: "João Silva",
+  },
+  {
+    id: 2,
+    patrimonio: "AC12345",
+    tipo: "movimentacao",
+    descricao: "Transferência da Sala 101 para Sala 102",
+    dataInicio: new Date("2023-06-15"),
+    dataTermino: null,
+    responsavel: "Maria Oliveira",
+  },
+  {
+    id: 3,
+    patrimonio: "AC67890",
+    tipo: "reclamacao",
+    descricao: "Equipamento com ruído excessivo",
+    dataInicio: new Date("2023-07-20"),
+    dataTermino: null,
+    responsavel: "Carlos Santos",
+  },
+  {
+    id: 4,
+    patrimonio: "AC67890",
+    tipo: "manutencao-corretiva",
+    descricao: "Substituição de ventilador interno",
+    dataInicio: new Date("2023-07-25"),
+    dataTermino: new Date("2023-07-25"),
+    responsavel: "Pedro Técnico",
+  },
+  {
+    id: 5,
+    patrimonio: "AC54321",
+    tipo: "reserva",
+    descricao: "Reserva para instalação em nova sala",
+    dataInicio: new Date("2023-08-01"),
+    dataTermino: new Date("2023-08-15"),
+    responsavel: "Ana Planejamento",
+  },
+]
+
 interface NovaIntervencaoFormProps {
   onSubmit: (data: any) => void
   onCancel: () => void
@@ -43,25 +126,33 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
     descricao: "",
     dataInicio: new Date(),
     dataTermino: null as Date | null,
-    localOrigem: "",
     localDestino: "",
     custo: "",
     responsavel: "Usuário Atual", // Em um sistema real, seria o usuário logado
     observacoes: "",
   })
 
+  const [equipamentoSelecionado, setEquipamentoSelecionado] = useState<any>(null)
+  const [historicoEquipamento, setHistoricoEquipamento] = useState<any[]>([])
+
+  // Efeito para buscar detalhes do equipamento quando o patrimônio muda
+  useEffect(() => {
+    if (formData.patrimonio) {
+      const equipamento = equipamentosData.find((e) => e.patrimonio === formData.patrimonio)
+      setEquipamentoSelecionado(equipamento || null)
+
+      // Buscar histórico do equipamento
+      const historico = historicoData.filter((h) => h.patrimonio === formData.patrimonio)
+      setHistoricoEquipamento(historico)
+    } else {
+      setEquipamentoSelecionado(null)
+      setHistoricoEquipamento([])
+    }
+  }, [formData.patrimonio])
+
   // Efeito para ajustar campos visíveis com base no tipo de intervenção
   useEffect(() => {
-    // Resetar campos condicionais quando o tipo muda
     if (formData.tipo === "reserva") {
-      setFormData((prev) => ({
-        ...prev,
-        localOrigem: "",
-        localDestino: "",
-      }))
-    } else if (formData.tipo === "movimentacao") {
-      // Nada a fazer, ambos os campos são necessários
-    } else if (formData.tipo === "desinstalacao") {
       setFormData((prev) => ({
         ...prev,
         localDestino: "",
@@ -114,21 +205,10 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
       return
     }
 
-    if (formData.tipo === "movimentacao") {
-      if (!formData.localOrigem || !formData.localDestino) {
-        toast({
-          title: "Erro de validação",
-          description: "Local de origem e destino são obrigatórios para movimentações.",
-          variant: "destructive",
-        })
-        return
-      }
-    }
-
-    if (formData.tipo === "desinstalacao" && !formData.localOrigem) {
+    if (formData.tipo === "movimentacao" && !formData.localDestino) {
       toast({
         title: "Erro de validação",
-        description: "Local de origem é obrigatório para desinstalações.",
+        description: "Local de destino é obrigatório para movimentações.",
         variant: "destructive",
       })
       return
@@ -137,11 +217,15 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
     // Converter custo para número
     const custoNumerico = formData.custo ? Number.parseFloat(formData.custo) : 0
 
-    // Enviar dados
-    onSubmit({
+    // Adicionar local de origem do equipamento selecionado
+    const dadosCompletos = {
       ...formData,
+      localOrigem: equipamentoSelecionado?.localAtual || "",
       custo: custoNumerico,
-    })
+    }
+
+    // Enviar dados
+    onSubmit(dadosCompletos)
   }
 
   // Atalhos de teclado
@@ -151,8 +235,6 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
   // Verificar se o campo deve ser visível com base no tipo
   const isFieldVisible = (field: string) => {
     switch (field) {
-      case "localOrigem":
-        return formData.tipo === "movimentacao" || formData.tipo === "desinstalacao"
       case "localDestino":
         return formData.tipo === "movimentacao"
       default:
@@ -165,8 +247,6 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
     switch (field) {
       case "dataTermino":
         return formData.tipo === "reserva"
-      case "localOrigem":
-        return formData.tipo === "movimentacao" || formData.tipo === "desinstalacao"
       case "localDestino":
         return formData.tipo === "movimentacao"
       default:
@@ -176,21 +256,24 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Número de Patrimônio */}
-        <div>
-          <Label htmlFor="patrimonio" className="mb-1 block">
-            Número de Patrimônio *
-          </Label>
-          <Combobox
-            items={patrimonios}
-            value={formData.patrimonio}
-            onChange={(value) => handleComboboxChange("patrimonio", value)}
-            placeholder="Selecione o patrimônio"
-            allowCustomValue={true}
-          />
-        </div>
+      {/* Número de Patrimônio */}
+      <div>
+        <Label htmlFor="patrimonio" className="mb-1 block">
+          Número de Patrimônio *
+        </Label>
+        <Combobox
+          items={patrimonios}
+          value={formData.patrimonio}
+          onChange={(value) => handleComboboxChange("patrimonio", value)}
+          placeholder="Selecione o patrimônio"
+          allowCustomValue={true}
+        />
+      </div>
 
+      {/* Detalhes do Equipamento */}
+      <EquipamentoDetalhes equipamento={equipamentoSelecionado} />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Tipo de Intervenção */}
         <div>
           <Label htmlFor="tipo" className="mb-1 block">
@@ -203,53 +286,6 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
             placeholder="Selecione o tipo"
           />
         </div>
-
-        {/* Descrição */}
-        <div className="md:col-span-2">
-          <Label htmlFor="descricao" className="mb-1 block">
-            Descrição
-          </Label>
-          <Textarea
-            id="descricao"
-            name="descricao"
-            value={formData.descricao}
-            onChange={handleInputChange}
-            placeholder="Descreva a intervenção"
-            rows={3}
-          />
-        </div>
-
-        {/* Data Início */}
-        <div>
-          <Label htmlFor="dataInicio" className="mb-1 block">
-            Data Início
-          </Label>
-          <DatePicker date={formData.dataInicio} onSelect={(date) => handleDateChange("dataInicio", date)} />
-        </div>
-
-        {/* Data Término */}
-        <div>
-          <Label htmlFor="dataTermino" className="mb-1 block">
-            Data Término {isFieldRequired("dataTermino") && "*"}
-          </Label>
-          <DatePicker date={formData.dataTermino} onSelect={(date) => handleDateChange("dataTermino", date)} />
-        </div>
-
-        {/* Local Origem */}
-        {isFieldVisible("localOrigem") && (
-          <div>
-            <Label htmlFor="localOrigem" className="mb-1 block">
-              Local Origem {isFieldRequired("localOrigem") && "*"}
-            </Label>
-            <Combobox
-              items={locais}
-              value={formData.localOrigem}
-              onChange={(value) => handleComboboxChange("localOrigem", value)}
-              placeholder="Selecione o local de origem"
-              allowCustomValue={true}
-            />
-          </div>
-        )}
 
         {/* Local Destino */}
         {isFieldVisible("localDestino") && (
@@ -266,6 +302,22 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
             />
           </div>
         )}
+
+        {/* Data Início */}
+        <div>
+          <Label htmlFor="dataInicio" className="mb-1 block">
+            Data Início
+          </Label>
+          <DatePicker date={formData.dataInicio} onSelect={(date) => handleDateChange("dataInicio", date)} />
+        </div>
+
+        {/* Data Término */}
+        <div>
+          <Label htmlFor="dataTermino" className="mb-1 block">
+            Data Término {isFieldRequired("dataTermino") && "*"}
+          </Label>
+          <DatePicker date={formData.dataTermino} onSelect={(date) => handleDateChange("dataTermino", date)} />
+        </div>
 
         {/* Custo */}
         <div>
@@ -297,21 +349,36 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
             placeholder="Nome do responsável"
           />
         </div>
+      </div>
 
-        {/* Observações */}
-        <div className="md:col-span-2">
-          <Label htmlFor="observacoes" className="mb-1 block">
-            Observações
-          </Label>
-          <Textarea
-            id="observacoes"
-            name="observacoes"
-            value={formData.observacoes}
-            onChange={handleInputChange}
-            placeholder="Observações adicionais"
-            rows={3}
-          />
-        </div>
+      {/* Descrição */}
+      <div>
+        <Label htmlFor="descricao" className="mb-1 block">
+          Descrição
+        </Label>
+        <Textarea
+          id="descricao"
+          name="descricao"
+          value={formData.descricao}
+          onChange={handleInputChange}
+          placeholder="Descreva a intervenção"
+          rows={3}
+        />
+      </div>
+
+      {/* Observações */}
+      <div>
+        <Label htmlFor="observacoes" className="mb-1 block">
+          Observações
+        </Label>
+        <Textarea
+          id="observacoes"
+          name="observacoes"
+          value={formData.observacoes}
+          onChange={handleInputChange}
+          placeholder="Observações adicionais"
+          rows={3}
+        />
       </div>
 
       {/* Botões de ação */}
@@ -321,6 +388,9 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
         </Button>
         <Button type="submit">Salvar (F9)</Button>
       </div>
+
+      {/* Histórico do Equipamento */}
+      <EquipamentoHistorico patrimonio={formData.patrimonio} intervencoes={historicoEquipamento} />
     </form>
   )
 }

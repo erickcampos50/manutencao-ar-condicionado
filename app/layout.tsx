@@ -5,7 +5,6 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { MainNav } from "@/components/main-nav"
 import { Toaster } from "@/components/ui/toaster"
-import { DebugInfo } from "@/components/debug-info"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -26,7 +25,6 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
           <MainNav />
           <main className="min-h-[calc(100vh-4rem)]">{children}</main>
-          <DebugInfo />
           <Toaster />
         </ThemeProvider>
       </body>
