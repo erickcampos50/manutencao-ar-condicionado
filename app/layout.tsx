@@ -5,6 +5,7 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { MainNav } from "@/components/main-nav"
 import { Toaster } from "@/components/ui/toaster"
+import { GlobalShortcuts } from "@/components/global-shortcuts"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -26,6 +27,7 @@ export default function RootLayout({
           <MainNav />
           <main className="min-h-[calc(100vh-4rem)]">{children}</main>
           <Toaster />
+          <GlobalShortcuts />
         </ThemeProvider>
       </body>
     </html>

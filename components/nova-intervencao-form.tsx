@@ -22,6 +22,7 @@ import {
   addLocalClient,
 } from "@/lib/supabase/client"
 import { adicionarIntervencao } from "@/app/actions"
+import type { Equipamento } from "@/lib/supabase/server"
 
 interface NovaIntervencaoFormProps {
   onSubmit: (data: any) => void
@@ -33,6 +34,7 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
   const [isLoading, setIsLoading] = useState(false)
   const [locais, setLocais] = useState<{ label: string; value: string }[]>([])
   const [patrimonios, setPatrimonios] = useState<{ label: string; value: string }[]>([])
+  const [equipamentos, setEquipamentos] = useState<Equipamento[]>([])
 
   const [mostrarTabelaEquipamentos, setMostrarTabelaEquipamentos] = useState(false)
 
@@ -64,8 +66,9 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
           })),
         )
 
-        // Carregar patrimônios
+        // Carregar equipamentos completos
         const equipamentosData = await getEquipamentosClient()
+        setEquipamentos(equipamentosData)
         setPatrimonios(
           equipamentosData.map((equip) => ({
             label: equip.patrimonio,
@@ -315,6 +318,7 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
           Número de Patrimônio *
         </Label>
         <Button
+          type="button"
           variant="outline"
           className="mb-2"
           onClick={() => setMostrarTabelaEquipamentos((prev) => !prev)}
@@ -322,10 +326,10 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
           {mostrarTabelaEquipamentos ? "Ocultar tabela de equipamentos" : "Mostrar tabela de equipamentos"}
         </Button>
         {mostrarTabelaEquipamentos && (
-          <div className="max-h-48 overflow-y-auto border rounded-md mb-4">
+          <div className="max-h-64 overflow-y-auto border rounded-md mb-4">
             <table className="min-w-full divide-y divide-border">
-              <thead>
-                <tr className="bg-muted/50">
+              <thead className="sticky top-0 bg-muted/50">
+                <tr>
                   <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Patrimônio
                   </th>
@@ -335,25 +339,35 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
                   <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Modelo
                   </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Local
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Potência
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Capacidade
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-background divide-y divide-border">
-                {patrimonios.map((equip) => (
+                {equipamentos.map((equip) => (
                   <tr
-                    key={equip.value}
-                    className="cursor-pointer hover:bg-muted"
+                    key={equip.id}
+                    className={`cursor-pointer hover:bg-muted transition-colors ${
+                      formData.patrimonio === equip.patrimonio ? "bg-blue-50 border-blue-200" : ""
+                    }`}
                     onClick={() => {
-                      handleComboboxChange("patrimonio", equip.value)
+                      handleComboboxChange("patrimonio", equip.patrimonio)
                       setMostrarTabelaEquipamentos(false)
                     }}
                   >
-                    <td className="px-4 py-2 whitespace-nowrap text-sm">{equip.label}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm">
-                      {equipamentoSelecionado?.marca || "-"}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm">
-                      {equipamentoSelecionado?.modelo || "-"}
-                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm font-medium">{equip.patrimonio}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm">{equip.marca || "-"}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm">{equip.modelo || "-"}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm">{equip.local_inicial}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm">{equip.potencia || "-"}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm">{equip.capacidade || "-"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -364,7 +378,7 @@ export function NovaIntervencaoForm({ onSubmit, onCancel }: NovaIntervencaoFormP
           items={patrimonios}
           value={formData.patrimonio}
           onChange={(value) => handleComboboxChange("patrimonio", value)}
-          placeholder="Selecione o patrimônio"
+          placeholder="Selecione o patrimônio ou digite para buscar"
           allowCustomValue={false}
         />
       </div>

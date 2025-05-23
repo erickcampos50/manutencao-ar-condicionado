@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DatePicker } from "@/components/date-picker"
 import { Combobox } from "@/components/combobox"
 import { CheckboxGroup } from "@/components/checkbox-group"
+import { MultiSelect } from "@/components/multi-select"
 import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut"
 import { BarChart, LineChart, PieChart } from "@/components/charts"
 import { Timeline } from "@/components/timeline"
@@ -176,6 +177,11 @@ export default function Consultas() {
     setResultadosFiltrados(resultados)
   }
 
+  // Aplicar filtros automaticamente quando os filtros mudarem
+  useEffect(() => {
+    aplicarFiltros()
+  }, [filtros, intervencoes, equipamentos])
+
   // Exportar para CSV
   const exportarCSV = () => {
     // Implementação simplificada de exportação CSV
@@ -300,6 +306,31 @@ export default function Consultas() {
     return tiposMap[tipo] || tipo
   }
 
+  // Filtrar equipamentos para exibição na tabela
+  const equipamentosFiltrados = equipamentos.filter((eq) => {
+    // Filtrar por patrimônio
+    if (filtros.patrimonio && !eq.patrimonio.toLowerCase().includes(filtros.patrimonio.toLowerCase())) {
+      return false
+    }
+    
+    // Filtrar por marca
+    if (filtros.marca && !eq.marca?.toLowerCase().includes(filtros.marca.toLowerCase())) {
+      return false
+    }
+    
+    // Filtrar por potência
+    if (filtros.potencia && !eq.potencia?.toString().includes(filtros.potencia)) {
+      return false
+    }
+    
+    // Filtrar por locais
+    if (filtros.locais && filtros.locais.length > 0 && !filtros.locais.includes(eq.local_inicial)) {
+      return false
+    }
+    
+    return true
+  })
+
   // Atalho de teclado para aplicar filtros
   useKeyboardShortcut("F9", aplicarFiltros)
 
@@ -316,6 +347,47 @@ export default function Consultas() {
     descricao: item.descricao || "",
     responsavel: item.responsavel || "",
   }))
+
+  // Identificar equipamentos desinstalados disponíveis para instalação
+  const equipamentosDesinstalados = equipamentos.filter((eq) => {
+    // Buscar a última intervenção de desinstalação para este equipamento
+    const ultimaDesinstalacao = intervencoes
+      .filter((int) => int.patrimonio === eq.patrimonio && int.tipo === "desinstalacao")
+      .sort((a, b) => new Date(b.data_inicio).getTime() - new Date(a.data_inicio).getTime())[0]
+
+    if (!ultimaDesinstalacao) return false
+
+    // Verificar se não há movimentação ou instalação posterior à desinstalação
+    const intervencoesPosterior = intervencoes.filter(
+      (int) =>
+        int.patrimonio === eq.patrimonio &&
+        (int.tipo === "movimentacao" || int.tipo === "instalacao") &&
+        new Date(int.data_inicio) > new Date(ultimaDesinstalacao.data_inicio)
+    )
+
+    // Se não há intervenções posteriores, o equipamento está disponível
+    return intervencoesPosterior.length === 0
+  })
+
+  // Filtrar equipamentos desinstalados conforme filtros aplicados
+  const equipamentosDesinstaladosFiltrados = equipamentosDesinstalados.filter((eq) => {
+    // Filtrar por patrimônio
+    if (filtros.patrimonio && !eq.patrimonio.toLowerCase().includes(filtros.patrimonio.toLowerCase())) {
+      return false
+    }
+    
+    // Filtrar por marca
+    if (filtros.marca && !eq.marca?.toLowerCase().includes(filtros.marca.toLowerCase())) {
+      return false
+    }
+    
+    // Filtrar por potência
+    if (filtros.potencia && !eq.potencia?.toString().includes(filtros.potencia)) {
+      return false
+    }
+    
+    return true
+  })
 
   return (
     <div className="container mx-auto p-4">
@@ -351,10 +423,11 @@ export default function Consultas() {
               {/* Vários Locais */}
               <div>
                 <Label>Locais</Label>
-                <CheckboxGroup
+                <MultiSelect
                   items={locais}
                   selectedItems={filtros.locais}
                   onChange={(selected) => handleFiltroChange("locais", selected)}
+                  placeholder="Selecione locais..."
                 />
               </div>
 
@@ -417,11 +490,12 @@ export default function Consultas() {
             </Card>
           ) : (
             <Tabs value={tabAtiva} onValueChange={setTabAtiva}>
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="visao-geral">Visão Geral</TabsTrigger>
                 <TabsTrigger value="historico">Histórico Cronológico</TabsTrigger>
                 <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
                 <TabsTrigger value="equipamentos">Equipamentos</TabsTrigger>
+                <TabsTrigger value="desinstalados">Desinstalados</TabsTrigger>
               </TabsList>
 
               {/* Conteúdo da aba Visão Geral */}
@@ -561,7 +635,7 @@ export default function Consultas() {
               <TabsContent value="equipamentos" className="space-y-4">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Equipamentos Registrados</CardTitle>
+                    <CardTitle>Equipamentos Registrados ({equipamentosFiltrados.length} de {equipamentos.length})</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="overflow-x-auto">
@@ -601,7 +675,7 @@ export default function Consultas() {
                           </tr>
                         </thead>
                         <tbody className="bg-background divide-y divide-border">
-                          {equipamentos.map((eq) => (
+                          {equipamentosFiltrados.map((eq) => (
                             <tr key={eq.id}>
                               <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.patrimonio}</td>
                               <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.marca || "-"}</td>
@@ -618,6 +692,92 @@ export default function Consultas() {
                         </tbody>
                       </table>
                     </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Conteúdo da aba Equipamentos Desinstalados */}
+              <TabsContent value="desinstalados" className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      Equipamentos Desinstalados - Disponíveis para Instalação ({equipamentosDesinstaladosFiltrados.length} de {equipamentosDesinstalados.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {equipamentosDesinstaladosFiltrados.length === 0 ? (
+                      <div className="text-center py-8">
+                        <p className="text-muted-foreground">Nenhum equipamento desinstalado encontrado com os filtros aplicados.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-border">
+                          <thead>
+                            <tr className="bg-muted/50">
+                              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                Patrimônio
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                Marca
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                Modelo
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                Número de Série
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                Potência
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                Capacidade
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                Voltagem
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                Tipo
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                Última Desinstalação
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                Status
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-background divide-y divide-border">
+                            {equipamentosDesinstaladosFiltrados.map((eq) => {
+                              // Buscar a última desinstalação
+                              const ultimaDesinstalacao = intervencoes
+                                .filter((int) => int.patrimonio === eq.patrimonio && int.tipo === "desinstalacao")
+                                .sort((a, b) => new Date(b.data_inicio).getTime() - new Date(a.data_inicio).getTime())[0]
+
+                              return (
+                                <tr key={eq.id} className="hover:bg-muted/50">
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">{eq.patrimonio}</td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.marca || "-"}</td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.modelo || "-"}</td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.numero_serie || "-"}</td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.potencia || "-"}</td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.capacidade || "-"}</td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.voltagem || "-"}</td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm">{eq.tipo || "-"}</td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                    {ultimaDesinstalacao ? new Date(ultimaDesinstalacao.data_inicio).toLocaleDateString("pt-BR") : "-"}
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                      Disponível
+                                    </span>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>

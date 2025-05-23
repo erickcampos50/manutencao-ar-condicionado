@@ -207,3 +207,77 @@ export async function buscarIntervencoesPorPatrimonio(patrimonio: string) {
     }
   }
 }
+
+// Ação para atualizar um equipamento existente
+export async function atualizarEquipamento(id: string, formData: FormData) {
+  try {
+    const patrimonio = formData.get("patrimonio") as string
+    const marca = formData.get("marca") as string
+    const modelo = formData.get("modelo") as string
+    const numeroSerie = formData.get("numeroSerie") as string
+    const localInicial = formData.get("localInicial") as string
+    const peso = formData.get("peso") ? Number.parseFloat(formData.get("peso") as string) : null
+    const cor = formData.get("cor") as string
+    const potencia = formData.get("potencia") ? Number.parseFloat(formData.get("potencia") as string) : null
+    const capacidade = formData.get("capacidade") ? Number.parseFloat(formData.get("capacidade") as string) : null
+    const voltagem = formData.get("voltagem") as string
+    const tipo = formData.get("tipo") as string
+    const observacoes = formData.get("observacoes") as string
+    const dataEntrada = formData.get("dataEntrada") as string
+
+    // Verificar se o patrimônio já existe em outro equipamento
+    const { data: equipamentoExistente, error: errorBusca } = await supabaseServer
+      .from("equipamentos")
+      .select("id")
+      .eq("patrimonio", patrimonio)
+      .neq("id", id)
+      .single()
+
+    if (equipamentoExistente) {
+      return { success: false, message: "Número de patrimônio já cadastrado em outro equipamento." }
+    }
+
+    // Atualizar o equipamento
+    const { data, error } = await supabaseServer
+      .from("equipamentos")
+      .update({
+        patrimonio,
+        marca: marca || null,
+        modelo: modelo || null,
+        numero_serie: numeroSerie || null,
+        local_inicial: localInicial,
+        peso: peso || null,
+        cor: cor || null,
+        potencia: potencia || null,
+        capacidade: capacidade || null,
+        voltagem: voltagem || null,
+        tipo: tipo || null,
+        observacoes: observacoes || null,
+        data_entrada: dataEntrada || new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Erro ao atualizar equipamento:", error)
+      return { success: false, message: error.message }
+    }
+
+    // Revalidar o cache
+    revalidatePath("/equipamentos")
+    revalidatePath("/")
+
+    return {
+      success: true,
+      message: `Equipamento ${patrimonio} atualizado com sucesso.`,
+      data,
+    }
+  } catch (error) {
+    console.error("Erro ao atualizar equipamento:", error)
+    return {
+      success: false,
+      message: "Ocorreu um erro ao atualizar o equipamento.",
+    }
+  }
+}
